@@ -13,7 +13,7 @@ import (
 	"fmt"
 )
 
-func FetchServerCertificates(network string, address string) (*x509.CertPool, error) {
+func FetchServerCertificates(network string, address string) ([]*x509.Certificate, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
@@ -40,11 +40,26 @@ func FetchServerCertificates(network string, address string) (*x509.CertPool, er
 	if !ok {
 		return nil, err
 	}
-	pool := x509.NewCertPool()
-	for _, unverifiedCertificate := range cve.UnverifiedCertificates {
-		pool.AddCert(unverifiedCertificate)
+	return cve.UnverifiedCertificates, nil
+}
+
+func AppendServerCertificates(pool *x509.CertPool, network string, address string) (*x509.CertPool, error) {
+	serverCertificates, err := FetchServerCertificates(network, address)
+	if err != nil {
+		return nil, err
 	}
-	return pool, nil
+	serverPool := pool
+	if serverPool == nil {
+		systemPool, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get system certificates (cause: %w)", err)
+		}
+		serverPool = systemPool
+	}
+	for _, serverCertificate := range serverCertificates {
+		serverPool.AddCert(serverCertificate)
+	}
+	return serverPool, nil
 }
 
 func decodeServerCertificates(encoded []byte) ([]*x509.Certificate, error) {

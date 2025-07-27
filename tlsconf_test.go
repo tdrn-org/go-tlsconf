@@ -33,11 +33,11 @@ func TestEphemeralCertificate(t *testing.T) {
 	}
 	serverConfig.Bind()
 	server := runHttpServer(t, listener)
-	serverCertificates, err := tlsclient.FetchServerCertificates("tcp", address)
+	serverPool, err := tlsclient.AppendServerCertificates(nil, "tcp", address)
 	require.NoError(t, err)
 	clientConfig := tlsclient.Config{
 		Config: tls.Config{
-			RootCAs: serverCertificates,
+			RootCAs: serverPool,
 		},
 	}
 	clientConfig.Bind()
