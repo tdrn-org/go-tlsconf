@@ -8,7 +8,6 @@ package tlsconf_test
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
@@ -24,31 +23,23 @@ func TestEphemeralCertificate(t *testing.T) {
 	listener, err := net.Listen("tcp", "localhost:")
 	require.NoError(t, err)
 	address := listener.Addr().String()
-	certificate, err := tlsserver.GenerateEphemeralCertificate(address)
+	err = tlsserver.SetOptions(tlsserver.UseEphemeralCertificate(address))
 	require.NoError(t, err)
-	serverConfig := tlsserver.Config{
-		Config: tls.Config{
-			Certificates: []tls.Certificate{*certificate},
-		},
-	}
-	serverConfig.Bind()
 	server := runHttpServer(t, listener)
-	serverPool, err := tlsclient.AppendServerCertificates(nil, "tcp", address)
+	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AppendServerCertificates("tcp", address))
 	require.NoError(t, err)
-	clientConfig := tlsclient.Config{
-		Config: tls.Config{
-			RootCAs: serverPool,
-		},
-	}
-	clientConfig.Bind()
 	runHttpClient(t, address)
 	server.Shutdown(context.Background())
 }
 
 func runHttpServer(t *testing.T, listener net.Listener) *http.Server {
-	serverConfig, ok := conf.LookupConfiguration[*tlsserver.Config]()
-	require.True(t, ok)
+	serverConfig, _ := conf.LookupConfiguration[*tlsserver.Config]()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("ok"))
+	})
 	server := &http.Server{
+		Handler:   mux,
 		TLSConfig: &serverConfig.Config,
 	}
 	go func() {
@@ -61,8 +52,7 @@ func runHttpServer(t *testing.T, listener net.Listener) *http.Server {
 }
 
 func runHttpClient(t *testing.T, address string) {
-	clientConfig, ok := conf.LookupConfiguration[*tlsclient.Config]()
-	require.True(t, ok)
+	clientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &clientConfig.Config,
@@ -70,5 +60,5 @@ func runHttpClient(t *testing.T, address string) {
 	}
 	rsp, err := client.Get("https://" + address)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, rsp.StatusCode)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
 }

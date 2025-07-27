@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tdrn-org/go-tlsconf"
 )
 
 func GenerateEphemeralCertificate(address string) (*tls.Certificate, error) {
@@ -104,5 +106,16 @@ func nextCertificateSerialNumber() *big.Int {
 		if next != current {
 			return big.NewInt(next)
 		}
+	}
+}
+
+func UseEphemeralCertificate(address string) tlsconf.TLSConfigOption {
+	return func(config *tls.Config) error {
+		certificate, err := GenerateEphemeralCertificate(address)
+		if err != nil {
+			return err
+		}
+		config.Certificates = []tls.Certificate{*certificate}
+		return nil
 	}
 }

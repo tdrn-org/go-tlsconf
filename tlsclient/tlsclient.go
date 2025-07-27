@@ -11,6 +11,7 @@ import (
 	"reflect"
 
 	"github.com/tdrn-org/go-conf"
+	"github.com/tdrn-org/go-tlsconf"
 )
 
 type Config struct {
@@ -23,6 +24,18 @@ func (c *Config) Type() reflect.Type {
 
 func (c *Config) Bind() {
 	conf.BindConfiguration(c)
+}
+
+func SetOptions(options ...tlsconf.TLSConfigOption) error {
+	config := &Config{}
+	for _, option := range options {
+		err := option(&config.Config)
+		if err != nil {
+			return err
+		}
+	}
+	config.Bind()
+	return nil
 }
 
 func init() {

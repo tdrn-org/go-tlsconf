@@ -5,3 +5,7 @@
 // of the MIT license. See the LICENSE file for details.
 
 package tlsconf
+
+import "crypto/tls"
+
+type TLSConfigOption func(*tls.Config) error

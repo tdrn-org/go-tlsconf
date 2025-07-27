@@ -11,6 +11,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+
+	"github.com/tdrn-org/go-tlsconf"
 )
 
 func FetchServerCertificates(network string, address string) ([]*x509.Certificate, error) {
@@ -43,25 +45,6 @@ func FetchServerCertificates(network string, address string) ([]*x509.Certificat
 	return cve.UnverifiedCertificates, nil
 }
 
-func AppendServerCertificates(pool *x509.CertPool, network string, address string) (*x509.CertPool, error) {
-	serverCertificates, err := FetchServerCertificates(network, address)
-	if err != nil {
-		return nil, err
-	}
-	serverPool := pool
-	if serverPool == nil {
-		systemPool, err := x509.SystemCertPool()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get system certificates (cause: %w)", err)
-		}
-		serverPool = systemPool
-	}
-	for _, serverCertificate := range serverCertificates {
-		serverPool.AddCert(serverCertificate)
-	}
-	return serverPool, nil
-}
-
 func decodeServerCertificates(encoded []byte) ([]*x509.Certificate, error) {
 	decoded := make([]*x509.Certificate, 0)
 	block, rest := pem.Decode(encoded)
@@ -81,4 +64,33 @@ func decodeServerCertificates(encoded []byte) ([]*x509.Certificate, error) {
 		decoded = append(decoded, certs...)
 	}
 	return decoded, nil
+}
+
+func IgnoreSystemCerts() tlsconf.TLSConfigOption {
+	return func(config *tls.Config) error {
+		config.RootCAs = x509.NewCertPool()
+		return nil
+	}
+}
+
+func AppendServerCertificates(network string, address string) tlsconf.TLSConfigOption {
+	return func(config *tls.Config) error {
+		serverCertificates, err := FetchServerCertificates(network, address)
+		if err != nil {
+			return err
+		}
+		rootCAs := config.RootCAs
+		if rootCAs == nil {
+			systemCAs, err := x509.SystemCertPool()
+			if err != nil {
+				return fmt.Errorf("failed to get system certificates (cause: %w)", err)
+			}
+			rootCAs = systemCAs
+		}
+		for _, serverCertificate := range serverCertificates {
+			rootCAs.AddCert(serverCertificate)
+		}
+		config.RootCAs = rootCAs
+		return nil
+	}
 }
