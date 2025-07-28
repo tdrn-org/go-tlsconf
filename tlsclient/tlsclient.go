@@ -4,6 +4,7 @@
 // This software may be modified and distributed under the terms
 // of the MIT license. See the LICENSE file for details.
 
+// Package tlsconf provides functions to setup TLS on client side.
 package tlsclient
 
 import (
@@ -14,6 +15,7 @@ import (
 	"github.com/tdrn-org/go-tlsconf"
 )
 
+// Config defines the bindable configuration object holding the client [tls.Config] instance.
 type Config struct {
 	tls.Config
 }
@@ -26,6 +28,7 @@ func (c *Config) Bind() {
 	conf.BindConfiguration(c)
 }
 
+// SetOptions applies the given options to the client [tls.Config] instance.
 func SetOptions(options ...tlsconf.TLSConfigOption) error {
 	config := &Config{}
 	for _, option := range options {

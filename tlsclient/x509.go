@@ -9,63 +9,14 @@ package tlsclient
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 
+	"github.com/tdrn-org/go-conf"
 	"github.com/tdrn-org/go-tlsconf"
+	"github.com/tdrn-org/go-tlsconf/tlsserver"
 )
 
-func FetchServerCertificates(network string, address string) ([]*x509.Certificate, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
-		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			err := tls.CertificateVerificationError{}
-			err.UnverifiedCertificates = make([]*x509.Certificate, 0, len(rawCerts))
-			for _, rawCert := range rawCerts {
-				decodedCerts, _ := decodeServerCertificates(rawCert)
-				if decodedCerts != nil {
-					err.UnverifiedCertificates = append(err.UnverifiedCertificates, decodedCerts...)
-				}
-			}
-			err.Err = fmt.Errorf("%d peer certifcates received", len(err.UnverifiedCertificates))
-			return &err
-		},
-	}
-	conn, err := tls.Dial(network, address, tlsConfig)
-	if conn != nil {
-		defer conn.Close()
-	}
-	if err == nil {
-		return nil, fmt.Errorf("failed to fetch server certificates (%s:%s)", network, address)
-	}
-	cve, ok := err.(*tls.CertificateVerificationError)
-	if !ok {
-		return nil, err
-	}
-	return cve.UnverifiedCertificates, nil
-}
-
-func decodeServerCertificates(encoded []byte) ([]*x509.Certificate, error) {
-	decoded := make([]*x509.Certificate, 0)
-	block, rest := pem.Decode(encoded)
-	for block != nil {
-		certs, err := x509.ParseCertificates(block.Bytes)
-		if err != nil {
-			return decoded, fmt.Errorf("failed to parse PEM encoded certificate (cause: %w)", err)
-		}
-		decoded = append(decoded, certs...)
-		block, rest = pem.Decode(rest)
-	}
-	if len(decoded) == 0 {
-		certs, err := x509.ParseCertificates(encoded)
-		if err != nil {
-			return decoded, fmt.Errorf("failed to parse DER encoded certificate (cause: %w)", err)
-		}
-		decoded = append(decoded, certs...)
-	}
-	return decoded, nil
-}
-
+// IgnoreSystemCerts sets the RootCAs attribute to an empty [x509.CertPool].
 func IgnoreSystemCerts() tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
 		config.RootCAs = x509.NewCertPool()
@@ -73,12 +24,14 @@ func IgnoreSystemCerts() tlsconf.TLSConfigOption {
 	}
 }
 
+// AppendServerCertificates determines the certificates defined in the server [tls.Config]
+// and adds them to RootCAs pool.
+//
+// If RootCAs is nil, the result pool is based on the system CAs.
+// This function is meant for testing setups, to make the testing server certificate
+// known to the clients.
 func AppendServerCertificates(network string, address string) tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
-		serverCertificates, err := FetchServerCertificates(network, address)
-		if err != nil {
-			return err
-		}
 		rootCAs := config.RootCAs
 		if rootCAs == nil {
 			systemCAs, err := x509.SystemCertPool()
@@ -87,8 +40,9 @@ func AppendServerCertificates(network string, address string) tlsconf.TLSConfigO
 			}
 			rootCAs = systemCAs
 		}
-		for _, serverCertificate := range serverCertificates {
-			rootCAs.AddCert(serverCertificate)
+		tlsServerConfig, _ := conf.LookupConfiguration[*tlsserver.Config]()
+		for _, serverCertificate := range tlsServerConfig.Certificates {
+			rootCAs.AddCert(serverCertificate.Leaf)
 		}
 		config.RootCAs = rootCAs
 		return nil

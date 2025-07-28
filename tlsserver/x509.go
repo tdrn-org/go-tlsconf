@@ -25,6 +25,8 @@ import (
 	"github.com/tdrn-org/go-tlsconf"
 )
 
+// GenerateEphemeralCertificate generates a dummy server certificate and key
+// suitable for testing purposes.
 func GenerateEphemeralCertificate(address string) (*tls.Certificate, error) {
 	slog.Info("generating ephemeral certificate", slog.String("address", address))
 	hostOnly := strings.LastIndex(address, ":") < 0
@@ -109,6 +111,8 @@ func nextCertificateSerialNumber() *big.Int {
 	}
 }
 
+// UseEphemeralCertificate generates a ephemeral certificate and adds it
+// to the server [tls.Config].
 func UseEphemeralCertificate(address string) tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
 		certificate, err := GenerateEphemeralCertificate(address)

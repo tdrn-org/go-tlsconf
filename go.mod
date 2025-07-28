@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/stretchr/testify v1.10.0
-	github.com/tdrn-org/go-conf v0.0.3
+	github.com/tdrn-org/go-conf v0.0.4
 )
 
 require (
