@@ -19,3 +19,9 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, tlsServerConfig)
 }
+
+func TestIgnoreSystemCerts(t *testing.T) {
+	tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost"))
+	tlsServerConfig, _ := conf.LookupConfiguration[*tlsserver.Config]()
+	require.Len(t, tlsServerConfig.Certificates, 1)
+}

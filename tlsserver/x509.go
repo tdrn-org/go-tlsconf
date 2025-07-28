@@ -77,6 +77,7 @@ func createEphemeralCertificateX509(host string, publicKey crypto.PublicKey, pri
 		NotBefore:    now,
 		NotAfter:     now.AddDate(0, 0, 1),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		IsCA:         true,
 	}
 	hostIPAddress := net.ParseIP(host)

@@ -30,7 +30,7 @@ func IgnoreSystemCerts() tlsconf.TLSConfigOption {
 // If RootCAs is nil, the result pool is based on the system CAs.
 // This function is meant for testing setups, to make the testing server certificate
 // known to the clients.
-func AppendServerCertificates(network string, address string) tlsconf.TLSConfigOption {
+func AppendServerCertificates() tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
 		rootCAs := config.RootCAs
 		if rootCAs == nil {

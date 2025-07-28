@@ -15,9 +15,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/tdrn-org/go-conf"
+	"github.com/tdrn-org/go-tlsconf"
 	"github.com/tdrn-org/go-tlsconf/tlsclient"
 	"github.com/tdrn-org/go-tlsconf/tlsserver"
 )
+
+func TestEnableInsecureSkipVerify(t *testing.T) {
+	tlsclient.SetOptions(tlsconf.EnableInsecureSkipVerify())
+	tlsClientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
+	require.True(t, tlsClientConfig.InsecureSkipVerify)
+}
 
 func TestEphemeralCertificate(t *testing.T) {
 	listener, err := net.Listen("tcp", "localhost:")
@@ -26,7 +33,7 @@ func TestEphemeralCertificate(t *testing.T) {
 	err = tlsserver.SetOptions(tlsserver.UseEphemeralCertificate(address))
 	require.NoError(t, err)
 	server := runHttpServer(t, listener)
-	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AppendServerCertificates("tcp", address))
+	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AppendServerCertificates())
 	require.NoError(t, err)
 	runHttpClient(t, address)
 	server.Shutdown(context.Background())

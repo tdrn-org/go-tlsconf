@@ -19,3 +19,15 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, tlsClientConfig)
 }
+
+func TestIgnoreSystemCerts(t *testing.T) {
+	tlsclient.SetOptions(tlsclient.IgnoreSystemCerts())
+	tlsClientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
+	require.NotNil(t, tlsClientConfig.RootCAs)
+}
+
+func TestAppendServerCertificates(t *testing.T) {
+	tlsclient.SetOptions(tlsclient.AppendServerCertificates())
+	tlsClientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
+	require.NotNil(t, tlsClientConfig.RootCAs)
+}
