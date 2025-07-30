@@ -8,6 +8,9 @@ package tlsserver
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -25,10 +28,75 @@ import (
 	"github.com/tdrn-org/go-tlsconf"
 )
 
+// CertificateAlgorithm defines the supported key algorithms supported
+// for certificate key generation.
+type CertificateAlgorithm string
+
+const (
+	CertificateAlgorithmDefault  CertificateAlgorithm = "default"  // Default is ECDSA cipher P-256 curve
+	CertificateAlgorithmRSA2048  CertificateAlgorithm = "rsa2048"  // RSA cipher 2048 bit key lenght
+	CertificateAlgorithmRSA3072  CertificateAlgorithm = "rsa3072"  // RSA cipher 3072 bit key lenght
+	CertificateAlgorithmRSA4096  CertificateAlgorithm = "rsa4096"  // RSA cipher 4096 bit key lenght
+	CertificateAlgorithmRSA8192  CertificateAlgorithm = "rsa8192"  // RSA cipher 8192 bit key lenght
+	CertificateAlgorithmECDSA224 CertificateAlgorithm = "ecdsa224" // ECDSA cipher P-224 curve
+	CertificateAlgorithmECDSA256 CertificateAlgorithm = "ecdsa256" // ECDSA cipher P-256 curve
+	CertificateAlgorithmECDSA384 CertificateAlgorithm = "ecdsa384" // ECDSA cipher P-384 curve
+	CertificateAlgorithmECDSA521 CertificateAlgorithm = "ecdsa521" // ECDSA cipher P-521 curve
+	CertificateAlgorithmED25519  CertificateAlgorithm = "ed25519"  // ED25519 cipher
+)
+
+func generateCertificateKey(algorithm CertificateAlgorithm) (crypto.PublicKey, crypto.PrivateKey, error) {
+	switch algorithm {
+	case CertificateAlgorithmRSA2048:
+		return generateRSAKey(2048)
+	case CertificateAlgorithmRSA3072:
+		return generateRSAKey(3072)
+	case CertificateAlgorithmRSA4096:
+		return generateRSAKey(4096)
+	case CertificateAlgorithmRSA8192:
+		return generateRSAKey(8192)
+	case CertificateAlgorithmECDSA224:
+		return generateECDSKey(elliptic.P224())
+	case CertificateAlgorithmECDSA256, CertificateAlgorithmDefault:
+		return generateECDSKey(elliptic.P256())
+	case CertificateAlgorithmECDSA384:
+		return generateECDSKey(elliptic.P384())
+	case CertificateAlgorithmECDSA521:
+		return generateECDSKey(elliptic.P521())
+	case CertificateAlgorithmED25519:
+		return generateED25519Key()
+	}
+	return nil, nil, fmt.Errorf("unknown certificate algorithm: %s", algorithm)
+}
+
+func generateRSAKey(bits int) (crypto.PublicKey, crypto.PrivateKey, error) {
+	key, err := rsa.GenerateKey(rand.Reader, bits)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate RSA key (cause: %w)", err)
+	}
+	return &key.PublicKey, key, nil
+}
+
+func generateECDSKey(c elliptic.Curve) (crypto.PublicKey, crypto.PrivateKey, error) {
+	key, err := ecdsa.GenerateKey(c, rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate ECSDA key (cause: %w)", err)
+	}
+	return &key.PublicKey, key, nil
+}
+
+func generateED25519Key() (crypto.PublicKey, crypto.PrivateKey, error) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate ED25519 key (cause: %w)", err)
+	}
+	return publicKey, privateKey, nil
+}
+
 // GenerateEphemeralCertificate generates a dummy server certificate and key
-// suitable for testing purposes.
-func GenerateEphemeralCertificate(address string) (*tls.Certificate, error) {
-	slog.Info("generating ephemeral certificate", slog.String("address", address))
+// suitable for testing purposes using the given hostname/address and algorithm.
+func GenerateEphemeralCertificate(address string, algorithm CertificateAlgorithm) (*tls.Certificate, error) {
+	slog.Info("generating ephemeral certificate", slog.String("address", address), slog.String("algorithm", string(algorithm)))
 	hostOnly := strings.LastIndex(address, ":") < 0
 	host := address
 	if !hostOnly {
@@ -38,7 +106,7 @@ func GenerateEphemeralCertificate(address string) (*tls.Certificate, error) {
 		}
 		host = host0
 	}
-	publicKey, privateKey, keyBlock, err := generateEphemeralCertificateKey()
+	publicKey, privateKey, err := generateCertificateKey(algorithm)
 	if err != nil {
 		return nil, err
 	}
@@ -46,27 +114,19 @@ func GenerateEphemeralCertificate(address string) (*tls.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	certificate, err := tls.X509KeyPair(pem.EncodeToMemory(x509Block), pem.EncodeToMemory(keyBlock))
+	encodedPrivateKey, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode private key (cause: %w)", err)
+	}
+	privateKeyBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: encodedPrivateKey,
+	}
+	certificate, err := tls.X509KeyPair(pem.EncodeToMemory(x509Block), pem.EncodeToMemory(privateKeyBlock))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse certificate (cause: %w)", err)
 	}
 	return &certificate, nil
-}
-
-func generateEphemeralCertificateKey() (crypto.PublicKey, crypto.PrivateKey, *pem.Block, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to generate key (cause: %w)", err)
-	}
-	encodedKey, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to encode key (cause: %w)", err)
-	}
-	keyBlock := &pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: encodedKey,
-	}
-	return &key.PublicKey, key, keyBlock, nil
 }
 
 func createEphemeralCertificateX509(host string, publicKey crypto.PublicKey, privateKey crypto.PrivateKey) (*pem.Block, error) {
@@ -114,9 +174,9 @@ func nextCertificateSerialNumber() *big.Int {
 
 // UseEphemeralCertificate generates a ephemeral certificate and adds it
 // to the server [tls.Config].
-func UseEphemeralCertificate(address string) tlsconf.TLSConfigOption {
+func UseEphemeralCertificate(address string, algorithm CertificateAlgorithm) tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
-		certificate, err := GenerateEphemeralCertificate(address)
+		certificate, err := GenerateEphemeralCertificate(address, algorithm)
 		if err != nil {
 			return err
 		}

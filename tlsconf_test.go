@@ -30,7 +30,7 @@ func TestEphemeralCertificate(t *testing.T) {
 	listener, err := net.Listen("tcp", "localhost:")
 	require.NoError(t, err)
 	address := listener.Addr().String()
-	err = tlsserver.SetOptions(tlsserver.UseEphemeralCertificate(address))
+	err = tlsserver.SetOptions(tlsserver.UseEphemeralCertificate(address, tlsserver.CertificateAlgorithmDefault))
 	require.NoError(t, err)
 	server := runHttpServer(t, listener)
 	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AppendServerCertificates())
