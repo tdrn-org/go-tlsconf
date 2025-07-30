@@ -28,7 +28,7 @@ import (
 	"github.com/tdrn-org/go-tlsconf"
 )
 
-// CertificateAlgorithm defines the supported key algorithms supported
+// CertificateAlgorithm defines the supported key algorithms
 // for certificate key generation.
 type CertificateAlgorithm string
 
