@@ -9,6 +9,8 @@ package tlsclient
 
 import (
 	"crypto/tls"
+	"log/slog"
+	"net/http"
 	"reflect"
 
 	"github.com/tdrn-org/go-conf"
@@ -39,6 +41,24 @@ func SetOptions(options ...tlsconf.TLSConfigOption) error {
 	}
 	config.Bind()
 	return nil
+}
+
+// ApplyConfig applies the client [tls.Config] instance to the given [http.Client].
+//
+// If the given [http.Client]'s Transport is already configured, the [http.Client]
+// is returned unmodified and a warning is logged.
+func ApplyConfig(client *http.Client) *http.Client {
+	tlsClientConfig, _ := conf.LookupConfiguration[*Config]()
+	if client.Transport == nil {
+		client.Transport = &http.Transport{
+			TLSClientConfig: tlsClientConfig.Config.Clone(),
+		}
+	} else if transport, ok := client.Transport.(*http.Transport); ok && transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = tlsClientConfig.Config.Clone()
+	} else {
+		slog.Warn("client transport already configured; TLS client config not applied")
+	}
+	return client
 }
 
 func init() {

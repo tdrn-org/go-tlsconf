@@ -7,6 +7,7 @@
 package tlsclient_test
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,4 +31,12 @@ func TestAppendServerCertificates(t *testing.T) {
 	tlsclient.SetOptions(tlsclient.AppendServerCertificates())
 	tlsClientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
 	require.NotNil(t, tlsClientConfig.RootCAs)
+}
+
+func TestApplyConfig(t *testing.T) {
+	client0 := &http.Client{}
+	client1 := tlsclient.ApplyConfig(client0)
+	require.Equal(t, client0, client1)
+	client2 := tlsclient.ApplyConfig(client1)
+	require.Equal(t, client0, client2)
 }
