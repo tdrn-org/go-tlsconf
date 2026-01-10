@@ -65,6 +65,7 @@ func TestClientWithAddCertificatesFromFile(t *testing.T) {
 	serverURL, server := startTestServer(t)
 	dir := t.TempDir()
 	certFile, _, err := tlsconf.WriteCertificate(&server.TLSConfig.Certificates[0], dir, "localhost")
+	require.NoError(t, err)
 
 	err = tlsclient.SetOptions(tlsclient.AddCertificatesFromFile(certFile))
 	require.NoError(t, err)
