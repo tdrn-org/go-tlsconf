@@ -4,9 +4,10 @@
 // This software may be modified and distributed under the terms
 // of the MIT license. See the LICENSE file for details.
 
-package tlsserver
+package tlsconf
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -21,11 +22,11 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/tdrn-org/go-tlsconf"
 )
 
 // CertificateAlgorithm defines the supported key algorithms
@@ -45,7 +46,7 @@ const (
 	CertificateAlgorithmED25519  CertificateAlgorithm = "ed25519"  // ED25519 cipher
 )
 
-func generateCertificateKey(algorithm CertificateAlgorithm) (crypto.PublicKey, crypto.PrivateKey, error) {
+func (algorithm CertificateAlgorithm) GenerateCertificateKey() (crypto.PublicKey, crypto.PrivateKey, error) {
 	switch algorithm {
 	case CertificateAlgorithmRSA2048:
 		return generateRSAKey(2048)
@@ -56,13 +57,13 @@ func generateCertificateKey(algorithm CertificateAlgorithm) (crypto.PublicKey, c
 	case CertificateAlgorithmRSA8192:
 		return generateRSAKey(8192)
 	case CertificateAlgorithmECDSA224:
-		return generateECDSKey(elliptic.P224())
+		return generateECDSAKey(elliptic.P224())
 	case CertificateAlgorithmECDSA256, CertificateAlgorithmDefault:
-		return generateECDSKey(elliptic.P256())
+		return generateECDSAKey(elliptic.P256())
 	case CertificateAlgorithmECDSA384:
-		return generateECDSKey(elliptic.P384())
+		return generateECDSAKey(elliptic.P384())
 	case CertificateAlgorithmECDSA521:
-		return generateECDSKey(elliptic.P521())
+		return generateECDSAKey(elliptic.P521())
 	case CertificateAlgorithmED25519:
 		return generateED25519Key()
 	}
@@ -77,7 +78,7 @@ func generateRSAKey(bits int) (crypto.PublicKey, crypto.PrivateKey, error) {
 	return &key.PublicKey, key, nil
 }
 
-func generateECDSKey(c elliptic.Curve) (crypto.PublicKey, crypto.PrivateKey, error) {
+func generateECDSAKey(c elliptic.Curve) (crypto.PublicKey, crypto.PrivateKey, error) {
 	key, err := ecdsa.GenerateKey(c, rand.Reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate ECSDA key (cause: %w)", err)
@@ -93,9 +94,9 @@ func generateED25519Key() (crypto.PublicKey, crypto.PrivateKey, error) {
 	return publicKey, privateKey, nil
 }
 
-// GenerateEphemeralCertificate generates a dummy server certificate and key
-// suitable for testing purposes using the given hostname/address and algorithm.
-func GenerateEphemeralCertificate(address string, algorithm CertificateAlgorithm) (*tls.Certificate, error) {
+// GenerateEphemeralCertificate generates a dummy server certificate
+// suitable for testing purposes.
+func GenerateEphemeralCertificate(address string, algorithm CertificateAlgorithm, lifetime time.Duration) (*tls.Certificate, error) {
 	slog.Info("generating ephemeral certificate", slog.String("address", address), slog.String("algorithm", string(algorithm)))
 	hostOnly := strings.LastIndex(address, ":") < 0
 	host := address
@@ -106,11 +107,11 @@ func GenerateEphemeralCertificate(address string, algorithm CertificateAlgorithm
 		}
 		host = host0
 	}
-	publicKey, privateKey, err := generateCertificateKey(algorithm)
+	publicKey, privateKey, err := algorithm.GenerateCertificateKey()
 	if err != nil {
 		return nil, err
 	}
-	x509Block, err := createEphemeralCertificateX509(host, publicKey, privateKey)
+	x509Block, err := createEphemeralCertificateX509(host, publicKey, privateKey, lifetime)
 	if err != nil {
 		return nil, err
 	}
@@ -129,13 +130,13 @@ func GenerateEphemeralCertificate(address string, algorithm CertificateAlgorithm
 	return &certificate, nil
 }
 
-func createEphemeralCertificateX509(host string, publicKey crypto.PublicKey, privateKey crypto.PrivateKey) (*pem.Block, error) {
-	now := time.Now()
+func createEphemeralCertificateX509(host string, publicKey crypto.PublicKey, privateKey crypto.PrivateKey, lifetime time.Duration) (*pem.Block, error) {
+	now := time.Now().UTC()
 	template := &x509.Certificate{
 		SerialNumber: nextCertificateSerialNumber(),
 		Subject:      pkix.Name{CommonName: host},
 		NotBefore:    now,
-		NotAfter:     now.AddDate(0, 0, 1),
+		NotAfter:     now.Add(lifetime),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		IsCA:         true,
@@ -172,15 +173,37 @@ func nextCertificateSerialNumber() *big.Int {
 	}
 }
 
-// UseEphemeralCertificate generates a ephemeral certificate and adds it
-// to the server [tls.Config].
-func UseEphemeralCertificate(address string, algorithm CertificateAlgorithm) tlsconf.TLSConfigOption {
-	return func(config *tls.Config) error {
-		certificate, err := GenerateEphemeralCertificate(address, algorithm)
-		if err != nil {
-			return err
+// WriteCertificate writes the given certificate to the given directory using the given name.
+//
+// A successfull write will create two files. The certificate file (<dir>/<name>.crt) containing
+// the full certificate chain. The key file (<dir>/<name>.key) containing the private key.
+func WriteCertificate(certificate *tls.Certificate, dir, name string) (string, string, error) {
+	certFile := filepath.Join(dir, name+".crt")
+	encodedCerts := &bytes.Buffer{}
+	for _, cert := range certificate.Certificate {
+		certBlock := &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert,
 		}
-		config.Certificates = []tls.Certificate{*certificate}
-		return nil
+		encodedCerts.Write(pem.EncodeToMemory(certBlock))
 	}
+	err := os.WriteFile(certFile, encodedCerts.Bytes(), 0666)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to write certificate file '%s' (cause: %w)", certFile, err)
+	}
+	keyFile := filepath.Join(dir, name+".key")
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(certificate.PrivateKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal private key (cause: %w)", err)
+	}
+	keyBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyBytes,
+	}
+	encodedKey := pem.EncodeToMemory(keyBlock)
+	err = os.WriteFile(keyFile, encodedKey, 0600)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to write key file '%s' (cause: %w)", keyFile, err)
+	}
+	return certFile, keyFile, nil
 }

@@ -7,12 +7,16 @@
 package tlsclient_test
 
 import (
+	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tdrn-org/go-conf"
+	"github.com/tdrn-org/go-tlsconf"
 	"github.com/tdrn-org/go-tlsconf/tlsclient"
+	"github.com/tdrn-org/go-tlsconf/tlsserver"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -21,22 +25,58 @@ func TestDefaultConfig(t *testing.T) {
 	require.NotNil(t, tlsClientConfig)
 }
 
+func TestWithSystemCerts(t *testing.T) {
+	testTLSSuccess(t, "https://github.com")
+}
+
 func TestIgnoreSystemCerts(t *testing.T) {
 	tlsclient.SetOptions(tlsclient.IgnoreSystemCerts())
-	tlsClientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
-	require.NotNil(t, tlsClientConfig.RootCAs)
+	testTLSFailure(t, "https://github.com")
 }
 
-func TestAppendServerCertificates(t *testing.T) {
-	tlsclient.SetOptions(tlsclient.AppendServerCertificates())
-	tlsClientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
-	require.NotNil(t, tlsClientConfig.RootCAs)
+func TestWithoutAddServerCertificates(t *testing.T) {
+	tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost", tlsconf.CertificateAlgorithmDefault, time.Hour))
+	serverURL, server := startTestServer(t)
+
+	testTLSFailure(t, serverURL)
+
+	server.Shutdown(t.Context())
+	server.Close()
 }
 
-func TestApplyConfig(t *testing.T) {
-	client0 := &http.Client{}
-	client1 := tlsclient.ApplyConfig(client0)
-	require.Equal(t, client0, client1)
-	client2 := tlsclient.ApplyConfig(client1)
-	require.Equal(t, client0, client2)
+func TestAddServerCertificates(t *testing.T) {
+	tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost", tlsconf.CertificateAlgorithmDefault, time.Hour))
+	serverURL, server := startTestServer(t)
+
+	tlsclient.SetOptions(tlsclient.AddServerCertificates())
+	testTLSSuccess(t, serverURL)
+
+	server.Shutdown(t.Context())
+	server.Close()
+}
+
+func testTLSSuccess(t *testing.T, url string) {
+	client := tlsclient.ApplyConfig(&http.Client{})
+	_, err := client.Get(url)
+	require.NoError(t, err)
+}
+
+func testTLSFailure(t *testing.T, url string) {
+	client := tlsclient.ApplyConfig(&http.Client{})
+	_, err := client.Get(url)
+	require.Error(t, err)
+}
+
+func startTestServer(t *testing.T) (string, *http.Server) {
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+	server := tlsserver.ApplyConfig(&http.Server{})
+	go func() {
+		err := server.ServeTLS(listener, "", "")
+		require.ErrorIs(t, err, http.ErrServerClosed)
+	}()
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	serverURL := "https://localhost:" + port
+	return serverURL, server
 }

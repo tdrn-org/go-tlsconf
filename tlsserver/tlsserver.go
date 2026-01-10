@@ -9,7 +9,10 @@ package tlsserver
 
 import (
 	"crypto/tls"
+	"log/slog"
+	"net/http"
 	"reflect"
+	"time"
 
 	"github.com/tdrn-org/go-conf"
 	"github.com/tdrn-org/go-tlsconf"
@@ -39,6 +42,33 @@ func SetOptions(options ...tlsconf.TLSConfigOption) error {
 	}
 	config.Bind()
 	return nil
+}
+
+// UseEphemeralCertificate generates a ephemeral certificate and adds it
+// to the server [tls.Config].
+func UseEphemeralCertificate(address string, algorithm tlsconf.CertificateAlgorithm, lifetime time.Duration) tlsconf.TLSConfigOption {
+	return func(config *tls.Config) error {
+		certificate, err := tlsconf.GenerateEphemeralCertificate(address, algorithm, lifetime)
+		if err != nil {
+			return err
+		}
+		config.Certificates = []tls.Certificate{*certificate}
+		return nil
+	}
+}
+
+// ApplyConfig applies the server [tls.Config] instance to the given [http.Server].
+//
+// If the given [http.Server]'s TLS config is already set, the [http.Server]
+// is returned unmodified and a warning is logged.
+func ApplyConfig(server *http.Server) *http.Server {
+	tlsServerConfig, _ := conf.LookupConfiguration[*Config]()
+	if server.TLSConfig == nil {
+		server.TLSConfig = tlsServerConfig.Clone()
+	} else {
+		slog.Warn("server TLS already configured; TLS server config not applied")
+	}
+	return server
 }
 
 func init() {

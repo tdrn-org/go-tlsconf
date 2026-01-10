@@ -24,21 +24,17 @@ func IgnoreSystemCerts() tlsconf.TLSConfigOption {
 	}
 }
 
-// AppendServerCertificates determines the certificates defined in the server [tls.Config]
+// AddServerCertificates determines the certificates defined in the server [tls.Config]
 // and adds them to RootCAs pool.
 //
-// If RootCAs is nil, the result pool is based on the system CAs.
+// If the current config's RootCA pool is nil, the result pool is based on the system CAs.
 // This function is meant for testing setups, to make the testing server certificate
 // known to the clients.
-func AppendServerCertificates() tlsconf.TLSConfigOption {
+func AddServerCertificates() tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
-		rootCAs := config.RootCAs
-		if rootCAs == nil {
-			systemCAs, err := x509.SystemCertPool()
-			if err != nil {
-				return fmt.Errorf("failed to get system certificates (cause: %w)", err)
-			}
-			rootCAs = systemCAs
+		rootCAs, err := configRootCAs(config)
+		if err != nil {
+			return err
 		}
 		tlsServerConfig, _ := conf.LookupConfiguration[*tlsserver.Config]()
 		for _, serverCertificate := range tlsServerConfig.Certificates {
@@ -47,4 +43,33 @@ func AppendServerCertificates() tlsconf.TLSConfigOption {
 		config.RootCAs = rootCAs
 		return nil
 	}
+}
+
+// AddRootCertificateFromFile adds the given certificate to the RootCA pool.
+//
+// If the current config's RootCA pool is nil, the result pool is based on the system CAs.
+func AddRootCertificateFromFile(certFile, keyFile string) tlsconf.TLSConfigOption {
+	return func(config *tls.Config) error {
+		rootCAs, err := configRootCAs(config)
+		if err != nil {
+			return err
+		}
+		tlsCertificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return fmt.Errorf("failed to read certificate or key file (cause: %w)", err)
+		}
+		rootCAs.AddCert(tlsCertificate.Leaf)
+		return nil
+	}
+}
+
+func configRootCAs(config *tls.Config) (*x509.CertPool, error) {
+	if config.RootCAs != nil {
+		return config.RootCAs, nil
+	}
+	systemCAs, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get system certificates (cause: %w)", err)
+	}
+	return systemCAs, nil
 }

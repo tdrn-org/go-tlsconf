@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tdrn-org/go-conf"
@@ -30,10 +31,10 @@ func TestEphemeralCertificate(t *testing.T) {
 	listener, err := net.Listen("tcp", "localhost:")
 	require.NoError(t, err)
 	address := listener.Addr().String()
-	err = tlsserver.SetOptions(tlsserver.UseEphemeralCertificate(address, tlsserver.CertificateAlgorithmDefault))
+	err = tlsserver.SetOptions(tlsserver.UseEphemeralCertificate(address, tlsconf.CertificateAlgorithmDefault, time.Hour))
 	require.NoError(t, err)
 	server := runHttpServer(t, listener)
-	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AppendServerCertificates())
+	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AddServerCertificates())
 	require.NoError(t, err)
 	runHttpClient(t, address)
 	server.Shutdown(context.Background())
