@@ -22,19 +22,20 @@ import (
 )
 
 func TestEnableInsecureSkipVerify(t *testing.T) {
-	tlsclient.SetOptions(tlsconf.EnableInsecureSkipVerify())
+	err := tlsclient.SetOptions(tlsconf.EnableInsecureSkipVerify())
+	require.NoError(t, err)
 	tlsClientConfig, _ := conf.LookupConfiguration[*tlsclient.Config]()
 	require.True(t, tlsClientConfig.InsecureSkipVerify)
 }
 
-func TestEphemeralCertificate(t *testing.T) {
+func TestServerWithEphemeralCertificate(t *testing.T) {
 	listener, err := net.Listen("tcp", "localhost:")
 	require.NoError(t, err)
 	address := listener.Addr().String()
 	err = tlsserver.SetOptions(tlsserver.UseEphemeralCertificate(address, tlsconf.CertificateAlgorithmDefault, time.Hour))
 	require.NoError(t, err)
 	server := runHttpServer(t, listener)
-	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AddServerCertificates())
+	err = tlsclient.SetOptions(tlsclient.IgnoreSystemCerts(), tlsclient.AddServerConfigCertificates())
 	require.NoError(t, err)
 	runHttpClient(t, address)
 	server.Shutdown(context.Background())

@@ -25,17 +25,19 @@ func TestDefaultConfig(t *testing.T) {
 	require.NotNil(t, tlsClientConfig)
 }
 
-func TestWithSystemCerts(t *testing.T) {
+func TestClientDefaults(t *testing.T) {
 	testTLSSuccess(t, "https://github.com")
 }
 
-func TestIgnoreSystemCerts(t *testing.T) {
-	tlsclient.SetOptions(tlsclient.IgnoreSystemCerts())
+func TestClientWithIgnoreSystemCerts(t *testing.T) {
+	err := tlsclient.SetOptions(tlsclient.IgnoreSystemCerts())
+	require.NoError(t, err)
 	testTLSFailure(t, "https://github.com")
 }
 
-func TestWithoutAddServerCertificates(t *testing.T) {
-	tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost", tlsconf.CertificateAlgorithmDefault, time.Hour))
+func TestClientWithoutAddServerCertificates(t *testing.T) {
+	err := tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost", tlsconf.CertificateAlgorithmDefault, time.Hour))
+	require.NoError(t, err)
 	serverURL, server := startTestServer(t)
 
 	testTLSFailure(t, serverURL)
@@ -44,11 +46,28 @@ func TestWithoutAddServerCertificates(t *testing.T) {
 	server.Close()
 }
 
-func TestAddServerCertificates(t *testing.T) {
-	tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost", tlsconf.CertificateAlgorithmDefault, time.Hour))
+func TestClientWithAddServerConfigCertificates(t *testing.T) {
+	err := tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost", tlsconf.CertificateAlgorithmDefault, time.Hour))
+	require.NoError(t, err)
 	serverURL, server := startTestServer(t)
 
-	tlsclient.SetOptions(tlsclient.AddServerCertificates())
+	err = tlsclient.SetOptions(tlsclient.AddServerConfigCertificates())
+	require.NoError(t, err)
+	testTLSSuccess(t, serverURL)
+
+	server.Shutdown(t.Context())
+	server.Close()
+}
+
+func TestClientWithAddCertificatesFromFile(t *testing.T) {
+	err := tlsserver.SetOptions(tlsserver.UseEphemeralCertificate("localhost", tlsconf.CertificateAlgorithmDefault, time.Hour))
+	require.NoError(t, err)
+	serverURL, server := startTestServer(t)
+	dir := t.TempDir()
+	certFile, _, err := tlsconf.WriteCertificate(&server.TLSConfig.Certificates[0], dir, "localhost")
+
+	err = tlsclient.SetOptions(tlsclient.AddCertificatesFromFile(certFile))
+	require.NoError(t, err)
 	testTLSSuccess(t, serverURL)
 
 	server.Shutdown(t.Context())

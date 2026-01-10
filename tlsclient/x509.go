@@ -9,14 +9,17 @@ package tlsclient
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"os"
 
 	"github.com/tdrn-org/go-conf"
 	"github.com/tdrn-org/go-tlsconf"
 	"github.com/tdrn-org/go-tlsconf/tlsserver"
 )
 
-// IgnoreSystemCerts sets the RootCAs attribute to an empty [x509.CertPool].
+// IgnoreSystemCerts sets the RootCAs attribute to an empty [x509.CertPool] thereby
+// ignoring all system certificates.
 func IgnoreSystemCerts() tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
 		config.RootCAs = x509.NewCertPool()
@@ -24,13 +27,13 @@ func IgnoreSystemCerts() tlsconf.TLSConfigOption {
 	}
 }
 
-// AddServerCertificates determines the certificates defined in the server [tls.Config]
-// and adds them to RootCAs pool.
+// AddServerConfigCertificates retrieves the certificates defined in the server [tls.Config]
+// and adds them to the client [tls.Config]'s RootCA pool.
 //
 // If the current config's RootCA pool is nil, the result pool is based on the system CAs.
-// This function is meant for testing setups, to make the testing server certificate
+// This function is primarily meant for testing setups, to make the testing server certificate
 // known to the clients.
-func AddServerCertificates() tlsconf.TLSConfigOption {
+func AddServerConfigCertificates() tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
 		rootCAs, err := configRootCAs(config)
 		if err != nil {
@@ -45,21 +48,44 @@ func AddServerCertificates() tlsconf.TLSConfigOption {
 	}
 }
 
-// AddRootCertificateFromFile adds the given certificate to the RootCA pool.
+// AddCertificatesFromFile adds the certificates from the given file to the client
+// [tls.Config]'s RootCA pool.
 //
 // If the current config's RootCA pool is nil, the result pool is based on the system CAs.
-func AddRootCertificateFromFile(certFile, keyFile string) tlsconf.TLSConfigOption {
+func AddCertificatesFromFile(certFile string) tlsconf.TLSConfigOption {
 	return func(config *tls.Config) error {
 		rootCAs, err := configRootCAs(config)
 		if err != nil {
 			return err
 		}
-		tlsCertificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+		certData, err := os.ReadFile(certFile)
 		if err != nil {
-			return fmt.Errorf("failed to read certificate or key file (cause: %w)", err)
+			return fmt.Errorf("failed to read certificate file '%s' (cause: %w)", certFile, err)
 		}
-		rootCAs.AddCert(tlsCertificate.Leaf)
+		decodeCertificates(rootCAs, certData)
+		config.RootCAs = rootCAs
 		return nil
+	}
+}
+
+func decodeCertificates(pool *x509.CertPool, certData []byte) error {
+	rest := certData
+	for {
+		if len(rest) == 0 {
+			return nil
+		}
+		var pemBlock *pem.Block
+		pemBlock, rest = pem.Decode(rest)
+		if pemBlock == nil {
+			return fmt.Errorf("failed to decode PEM block")
+		}
+		if pemBlock.Type == "CERTIFICATE" {
+			cert, err := x509.ParseCertificate(pemBlock.Bytes)
+			if err != nil {
+				return fmt.Errorf("failed to parse X.509 certificate (cause: %w)", err)
+			}
+			pool.AddCert(cert)
+		}
 	}
 }
 
