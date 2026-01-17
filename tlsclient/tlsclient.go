@@ -43,18 +43,24 @@ func SetOptions(options ...tlsconf.TLSConfigOption) error {
 	return nil
 }
 
+// GetConfig returns the client [tls.Config] instance.
+func GetConfig() *tls.Config {
+	tlsClientConfig, _ := conf.LookupConfiguration[*Config]()
+	return &tlsClientConfig.Config
+}
+
 // ApplyConfig applies the client [tls.Config] instance to the given [http.Client].
 //
 // If the given [http.Client]'s Transport is already configured, the [http.Client]
 // is returned unmodified and a warning is logged.
 func ApplyConfig(client *http.Client) *http.Client {
-	tlsClientConfig, _ := conf.LookupConfiguration[*Config]()
+	config := GetConfig()
 	if client.Transport == nil {
 		client.Transport = &http.Transport{
-			TLSClientConfig: tlsClientConfig.Config.Clone(),
+			TLSClientConfig: config.Clone(),
 		}
 	} else if transport, ok := client.Transport.(*http.Transport); ok && transport.TLSClientConfig == nil {
-		transport.TLSClientConfig = tlsClientConfig.Config.Clone()
+		transport.TLSClientConfig = config.Clone()
 	} else {
 		slog.Warn("client transport already configured; TLS client config not applied")
 	}

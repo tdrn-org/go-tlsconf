@@ -57,14 +57,20 @@ func UseEphemeralCertificate(address string, algorithm tlsconf.CertificateAlgori
 	}
 }
 
+// GetConfig returns the server [tls.Config] instance.
+func GetConfig() *tls.Config {
+	tlsServerConfig, _ := conf.LookupConfiguration[*Config]()
+	return &tlsServerConfig.Config
+}
+
 // ApplyConfig applies the server [tls.Config] instance to the given [http.Server].
 //
 // If the given [http.Server]'s TLS config is already set, the [http.Server]
 // is returned unmodified and a warning is logged.
 func ApplyConfig(server *http.Server) *http.Server {
-	tlsServerConfig, _ := conf.LookupConfiguration[*Config]()
+	config := GetConfig()
 	if server.TLSConfig == nil {
-		server.TLSConfig = tlsServerConfig.Clone()
+		server.TLSConfig = config.Clone()
 	} else {
 		slog.Warn("server TLS already configured; TLS server config not applied")
 	}
