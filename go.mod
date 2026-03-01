@@ -1,10 +1,10 @@
 module github.com/tdrn-org/go-tlsconf
 
-go 1.25
+go 1.26
 
 require (
 	github.com/stretchr/testify v1.11.1
-	github.com/tdrn-org/go-conf v0.0.4
+	github.com/tdrn-org/go-conf v0.0.5
 )
 
 require (
